@@ -1,0 +1,34 @@
+version: '3'
+services:
+  srsue_zmq:
+    image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/docker_srslte:v23.11
+    container_name: srsue_zmq
+    stdin_open: true
+    tty: true
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    volumes:
+      - ./config:/mnt/srslte
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - COMPONENT_NAME=ue_zmq
+      # Subscription parameters (from open5gs MongoDB, uses OPc)
+      - UE1_IMSI=460090000000001
+      - UE1_KI=465B5CE8B199B49FAA5F0A2EE238A6BC
+      - UE1_OP=E8ED289DEBA952E4283B54E88E6183CA
+      # UE local IP for the ZMQ radio link, must equal the container IP below
+      - SRS_UE_IP=172.22.0.26
+      # srs eNB to connect to, must equal the srsenb_zmq container IP
+      - SRS_ENB_IP=172.22.0.25
+    expose:
+      - "2000/tcp"
+      - "2001/tcp"
+    networks:
+      default:
+        ipv4_address: 172.22.0.26
+networks:
+  default:
+    external:
+      name: docker_open5gs_default
