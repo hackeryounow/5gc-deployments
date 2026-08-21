@@ -1,0 +1,34 @@
+version: '3'
+services:
+  nr_gnb:
+    image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/docker_ueransim:v3.2.8
+    container_name: nr_gnb
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./config:/mnt/ueransim
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - COMPONENT_NAME=ueransim-gnb
+      # PLMN served by the open5gs core (subscription: imsi-460090000000001)
+      - MCC=460
+      - MNC=09
+      # gNB local IP for radio link / N2 / N3, must equal the container IP below
+      - NR_GNB_IP=172.22.0.23
+      # AMF N2 address, must match AMF_IP in the open5gs core deployment
+      - AMF_IP=172.22.0.6
+      
+    expose:
+      - "38412/sctp"
+      - "2152/udp"
+      - "4997/udp"
+    cap_add:
+      - NET_ADMIN
+    networks:
+      default:
+        ipv4_address: 172.22.0.23
+networks:
+  default:
+    external:
+      name: docker_open5gs_default

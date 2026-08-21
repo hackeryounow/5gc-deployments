@@ -1,0 +1,33 @@
+version: '3'
+services:
+  nr_gnb:
+    image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/docker_ueransim:v3.2.8
+    container_name: nr_gnb
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./config:/mnt/ueransim
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - COMPONENT_NAME=ueransim-gnb
+      # PLMN served by the free5gc core
+      - MCC=208
+      - MNC=93
+      # gNB local IP for radio link / N2 / N3, must equal the container IP below
+      - NR_GNB_IP=10.100.200.204
+      # AMF N2 address, matches free5gc-amf ipv4_address in the free5gc core deployment
+      - AMF_IP=10.100.200.16
+    expose:
+      - "38412/sctp"
+      - "2152/udp"
+      - "4997/udp"
+    cap_add:
+      - NET_ADMIN
+    networks:
+      default:
+        ipv4_address: 10.100.200.204
+networks:
+  default:
+    external:
+      name: 422-free5gc_privnet

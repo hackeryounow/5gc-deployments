@@ -1,0 +1,37 @@
+version: '3'
+services:
+  nr_ue:
+    image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/docker_ueransim:v3.2.8
+    container_name: nr_ue
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./config:/mnt/ueransim
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - COMPONENT_NAME=ueransim-ue
+      # PLMN served by the free5gc core
+      - MCC=208
+      - MNC=93
+      # Subscription parameters (free5gc default subscriber, uses OPc)
+      - UE1_IMSI=208930000000001
+      - UE1_KI=8baf473f2f8fd09487cccbd7097c6862
+      - UE1_OP=8e27b6af0e692e750f32667a3b14605d
+      - UE1_AMF=8000
+      - UE1_IMEI=356938035643803
+      - UE1_IMEISV=4370816125816151
+      # gNB to camp on, must equal the nr_gnb container IP
+      - NR_GNB_IP=10.100.200.204
+    expose:
+      - "4997/udp"
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    networks:
+      default:
+        ipv4_address: 10.100.200.205
+networks:
+  default:
+    external:
+      name: 422-free5gc_privnet

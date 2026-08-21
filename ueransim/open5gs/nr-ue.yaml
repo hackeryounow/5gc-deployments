@@ -1,0 +1,37 @@
+version: '3'
+services:
+  nr_ue:
+    image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/docker_ueransim:v3.2.8
+    container_name: nr_ue
+    stdin_open: true
+    tty: true
+    volumes:
+      - ./config:/mnt/ueransim
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - COMPONENT_NAME=ueransim-ue
+      # PLMN served by the open5gs core
+      - MCC=460
+      - MNC=09
+      # Subscription parameters (from open5gs MongoDB, uses OPc)
+      - UE1_IMSI=460090000000001
+      - UE1_KI=465B5CE8B199B49FAA5F0A2EE238A6BC
+      - UE1_OP=E8ED289DEBA952E4283B54E88E6183CA
+      - UE1_AMF=8000
+      - UE1_IMEI=356938035643803
+      - UE1_IMEISV=3569380356438053
+      # gNB to camp on, must equal the nr_gnb container IP
+      - NR_GNB_IP=172.22.0.23
+    expose:
+      - "4997/udp"
+    cap_add:
+      - NET_ADMIN
+    privileged: true
+    networks:
+      default:
+        ipv4_address: 172.22.0.24
+networks:
+  default:
+    external:
+      name: docker_open5gs_default
