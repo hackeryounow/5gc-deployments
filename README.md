@@ -22,16 +22,19 @@ together with their RAN / UE simulators (UERANSIM, gnbsim, srsRAN).
 All Open5GS deployments run on the external network `docker_open5gs_default` (172.22.0.0/24).
 
 | Version directory | Build base | Purpose / Notes |
-|----|----|----|
-| `2.7.7-vonr` | docker_open5gs v2.7.7 images | Baseline SA VoNR deployment (embedded mode, includes IMS/Kamailio stack) |
-| `2.8.0-volte-asan` | Open5GS release **v2.8.0**, compiled with **ASAN (AddressSanitizer) enabled** | 4G VoLTE deployment for memory-error / vulnerability testing. ASAN adds runtime overhead and produces detailed crash reports on memory faults; do not use for performance testing |
-| `2.8.1-beta-vonr` | Open5GS **latest development branch** | SA VoNR deployment; supports the docker_kamailio build released together with docker_open5gs (custom image version) |
-| `2.8.1-gamma-vonr` | Open5GS **latest development branch** | SA VoNR deployment; supports the **official docker_kamailio v6.1.3** instead of the custom Kamailio build |
+|---|---|---|
+| `vonr-2.7.7` | docker_open5gs v2.7.7 images | Baseline SA VoNR deployment (embedded mode, includes IMS/Kamailio stack) |
+| `volte-2.8.0-asan` | Open5GS release **v2.8.0**, compiled with **ASAN (AddressSanitizer) enabled** | 4G VoLTE deployment for memory-error / vulnerability testing. ASAN adds runtime overhead and produces detailed crash reports on memory faults; do not use for performance testing |
+| `volte-2.8.0` | Open5GS release **v2.8.0** (docker_open5gs images) | 4G VoLTE deployment with Osmocom CS core (docker_osmohlr / docker_osmomsc); use this one for normal VoLTE testing instead of the ASAN build |
+| `vonr-2.8.1-beta` | Open5GS **latest development branch** | SA VoNR deployment; supports the docker_kamailio build released together with docker_open5gs (custom image version) |
+| `vonr-2.8.1-gamma` | Open5GS **latest development branch** | SA VoNR deployment; supports the **official docker_kamailio v6.1.3** instead of the custom Kamailio build |
+
+Directory naming convention: `<scenario>-<version>[-<variant>]`, e.g. `vonr-2.7.7`, `volte-2.8.0-asan`.
 
 Version selection guidance:
 
-* Use `2.7.7-vonr` as the stable reference deployment.
-* Use `2.8.0-volte-asan` only when ASAN instrumentation is required (fault injection,
+- Use `vonr-2.7.7` as the stable reference deployment.
+- Use `volte-2.8.0-asan` only when ASAN instrumentation is required (fault injection,
   CVE reproduction, fuzzing). Expect a performance penalty.
 * Choose between the two latest-branch builds by Kamailio preference:
   `beta` = docker_open5gs-provided Kamailio, `gamma` = official Kamailio v6.1.3.

@@ -385,7 +385,6 @@ services:
     image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/docker_osmomsc:latest
     container_name: osmomsc
     volumes:
-      - ./osmomsc:/mnt/osmomsc
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     env_file:
