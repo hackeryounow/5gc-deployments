@@ -45,15 +45,23 @@ Version selection guidance:
 
 | Version directory | Images | Notes |
 |----|----|----|
-| `2.2.0` | **Official** `oaisoftwarealliance/*` images | Basic NRF-based deployment; MySQL subscriber database (`oai/database/`); network `demo-oai-public-net` (172.20.0.0/16) |
+| `2.2.0` | **Official** `oaisoftwarealliance/*:v2.2.0` images | Basic NRF-based deployment; MySQL subscriber database (`oai/database/`); network `demo-oai-public-net` (172.20.0.0/16) |
+| `2.2.1` | **Official** `oaisoftwarealliance/*:v2.2.1` images | Same basic NRF-based topology as `2.2.0` on the v2.2.1 release (plain HTTP/2 SBI, no TLS). Start with `docker compose -f docker-compose-basic-nrf.yaml up -d`; verified end-to-end with UERANSIM (subscriber `imsi-208950000000031`, slice SST 222/SD 123, DNN `oai`): registration + PDU session established, UE `uesimtun0` gets `10.1.1.130`, ping to `oai-ext-dn` and to the internet via UPF SNAT both succeed. Network `demo-oai-public-net` (172.20.0.0/16) |
+| `2.2.1-tls` | `oaisoftwarealliance/*:develop` images | v2.2.1 with **TLS on the SBI interfaces**. Only AMF/SMF implement TLS in the official images, so a TLS-terminating HAProxy (`oai-sbi-proxy`) fronts NRF/AUSF/UDM. Generate certs first with `./generate_certs.sh`, then `docker compose -f docker-compose-basic-nrf-tls.yaml up -d` |
 
-Upgrading OAI only requires changing the image tag in `oai/2.2.0/docker-compose-basic-nrf.yaml`.
+Upgrading OAI only requires changing the image tag in `oai/<version>/docker-compose-basic-nrf*.yaml`.
+
+Note: the AMF publishes the N2 port `38412/sctp` on the host. If another core (e.g. a running
+free5GC AMF) already holds that port, remap it with a compose override (`ports: !override
+["38413:38412/sctp"]`); the containerized UERANSIM reaches `oai-amf` over `demo-oai-public-net`
+using the internal port, so the host mapping is only needed for an external gNB.
 
 ### free5GC (`free5gc/`)
 
 | Version directory | Images | Notes |
 |----|----|----|
 | `4.2.2` | **Official** `free5gc/*` images | Standard deployment with MongoDB; network `422-free5gc_privnet` (10.100.200.0/24); default PLMN 208/93 |
+| `ulcl` | **Official** `free5gc/*:v4.2.3` images | ULCL (uplink classifier) deployment modeled after `free5gc-compose/docker-compose-ulcl.yaml`: topology `gNB1 -> I-UPF -> PSA-UPF` with UE pool 10.60.0.0/16; traffic to 1.0.0.1/32 breaks out at I-UPF (`config/ULCL/uerouting.yaml`), everything else egresses at PSA-UPF. Start with `docker compose up -d`, then run the UE inside the gNB container: `docker exec -it ueransim bash -c "./nr-ue -c config/uecfg.yaml"` (uses `config/uecfg-ulcl.yaml`, subscriber `imsi-208930000000001`). SMF requires `-u ./config/uerouting.yaml`; MongoDB volume `ulcl_dbdata` is pre-seeded with the subscribers from the 4.2.3 deployment |
 
 ## RAN / UE Simulators
 
