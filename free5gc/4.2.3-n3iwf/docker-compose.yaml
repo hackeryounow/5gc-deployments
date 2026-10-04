@@ -212,6 +212,27 @@ services:
       - free5gc-nrf
       - free5gc-webui
 
+  free5gc-n3iwf:
+    container_name: n3iwf
+    image: free5gc/n3iwf:v4.2.3
+    command: ./n3iwf -c ./config/n3iwfcfg.yaml
+    volumes:
+      - ../config/n3iwfcfg.yaml:/free5gc/config/n3iwfcfg.yaml
+      - ../config/n3iwf-ipsec.sh:/free5gc/n3iwf-ipsec.sh
+    environment:
+      GIN_MODE: release
+    cap_add:
+      - NET_ADMIN
+    networks:
+      privnet:
+        ipv4_address: 10.100.200.15
+        aliases:
+          - n3iwf.free5gc.org
+    depends_on:
+      - free5gc-amf
+      - free5gc-smf
+      - free5gc-upf
+
   free5gc-tngf:
     container_name: tngf
     image: free5gc/tngf:latest
@@ -289,6 +310,24 @@ services:
     depends_on:
       - free5gc-amf
       - free5gc-upf
+
+  n3iwue:
+    container_name: n3iwue
+    image: free5gc/n3iwue:latest
+    command: bash -c "ip route del default && ip route add default via 10.100.200.1 dev eth0 metric 203 && sleep infinity"
+    volumes:
+      - ../config/n3uecfg.yaml:/n3iwue/config/n3ue.yaml
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - "/dev/net/tun"
+    networks:
+      privnet:
+        ipv4_address: 10.100.200.203
+        aliases:
+          - n3ue.free5gc.org
+    depends_on:
+      - free5gc-n3iwf
 
 networks:
   privnet:
