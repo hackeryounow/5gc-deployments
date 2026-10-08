@@ -1,28 +1,14 @@
-# OAI CN5G "develop" deployment (rolling develop-branch images)
-# - All oaisoftwarealliance/* images use the :develop tag
-# - pull_policy: always on every service => each `docker compose up` re-pulls the
-#   newest image (develop is a moving tag), satisfying the "re-pull on restart"
-#   requirement. Equivalent CLI: `docker compose up -d --pull always`.
-# - MySQL subscriber DB: ../database/oai_db2.sql (same seed as 2.2.0/2.2.1; no
-#   extra provisioning needed - the SMF uses local subscription info and the AMF
-#   tolerates the UDM 404 for imsi-208950000000031's missing AM row)
-# - Network demo-oai-public-net (172.20.0.0/16, bridge demo-oai), static IPs
-# - UERANSIM (gNB+UE) is NOT embedded here; use the repo's separate OAI compose:
-#     docker compose -f ../../ueransim/oai/docker-compose-ueransim-vpp.yaml up -d
-#   It joins demo-oai-public-net at 172.20.0.141 (env-driven, IMSI 208950000000031).
-#
-# Start core : docker compose up -d
-# Start UE   : docker compose -f ../../ueransim/oai/docker-compose-ueransim-vpp.yaml up -d
-# Stop       : docker compose -f ../../ueransim/oai/docker-compose-ueransim-vpp.yaml down
-#              docker compose down
+# OAI CN5G develop basic deployment (no TLS on SBI interfaces)
+# - Official oaisoftwarealliance/*:develop images
+# - MySQL subscriber database from ../../../database/oai_db2.sql
+# - Network demo-oai-public-net (172.20.0.0/16)
 services:
     mysql:
         container_name: "mysql"
         image: mysql:9.0
-        pull_policy: always
         volumes:
-            - ../database/oai_db2.sql:/docker-entrypoint-initdb.d/oai_db.sql
-            - ../healthscripts/mysql-healthcheck2.sh:/tmp/mysql-healthcheck.sh
+            - ../../../database/oai_db2.sql:/docker-entrypoint-initdb.d/oai_db.sql
+            - ../../../healthscripts/mysql-healthcheck2.sh:/tmp/mysql-healthcheck.sh
         environment:
             - TZ=Europe/Paris
             - MYSQL_DATABASE=oai_db
@@ -36,25 +22,9 @@ services:
             retries: 30
         networks:
             public_net:
-                ipv4_address: 172.20.0.2
-    oai-nrf:
-        container_name: "oai-nrf"
-        image: oaisoftwarealliance/oai-nrf:develop
-        pull_policy: always
-        expose:
-            - 80/tcp
-            - 8080/tcp
-        volumes:
-            - ./basic_nrf_config.yaml:/openair-nrf/etc/config.yaml
-        environment:
-            - TZ=Europe/Paris
-        networks:
-            public_net:
-                ipv4_address: 172.20.0.3
     oai-udr:
         container_name: "oai-udr"
         image: oaisoftwarealliance/oai-udr:develop
-        pull_policy: always
         expose:
             - 80/tcp
             - 8080/tcp
@@ -62,21 +32,14 @@ services:
             - ./basic_nrf_config.yaml:/openair-udr/etc/config.yaml
         environment:
             - TZ=Europe/Paris
-        # Wait until MySQL finished loading oai_db.sql and is healthy; the UDR
-        # only retries the DB briefly at startup, so starting it too early leaves
-        # it permanently disconnected.
         depends_on:
-            mysql:
-                condition: service_healthy
-            oai-nrf:
-                condition: service_started
+            - mysql
+            - oai-nrf
         networks:
             public_net:
-                ipv4_address: 172.20.0.8
     oai-udm:
         container_name: "oai-udm"
         image: oaisoftwarealliance/oai-udm:develop
-        pull_policy: always
         expose:
             - 80/tcp
             - 8080/tcp
@@ -88,11 +51,9 @@ services:
             - oai-nrf
         networks:
             public_net:
-                ipv4_address: 172.20.0.7
     oai-ausf:
         container_name: "oai-ausf"
         image: oaisoftwarealliance/oai-ausf:develop
-        pull_policy: always
         expose:
             - 80/tcp
             - 8080/tcp
@@ -104,11 +65,21 @@ services:
             - oai-nrf
         networks:
             public_net:
-                ipv4_address: 172.20.0.9
+    oai-nrf:
+        container_name: "oai-nrf"
+        image: swr.cn-north-4.myhuaweicloud.com/cn_5gc/oai-nrf:a1951676
+        expose:
+            - 80/tcp
+            - 8080/tcp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-nrf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        networks:
+            public_net:
     oai-amf:
         container_name: "oai-amf"
         image: oaisoftwarealliance/oai-amf:develop
-        pull_policy: always
         expose:
             - 80/tcp
             - 8080/tcp
@@ -125,11 +96,9 @@ services:
             - oai-nrf
         networks:
             public_net:
-                ipv4_address: 172.20.0.4
     oai-smf:
         container_name: "oai-smf"
         image: oaisoftwarealliance/oai-smf:develop
-        pull_policy: always
         expose:
             - 80/tcp
             - 8080/tcp
@@ -142,11 +111,9 @@ services:
             - oai-nrf
         networks:
             public_net:
-                ipv4_address: 172.20.0.5
     oai-upf:
         container_name: "oai-upf"
         image: oaisoftwarealliance/oai-upf:develop
-        pull_policy: always
         expose:
             - 2152/udp
             - 8805/udp
@@ -166,13 +133,11 @@ services:
         privileged: true
         networks:
             public_net:
-                ipv4_address: 172.20.0.6
     oai-ext-dn:
         privileged: true
         init: true
         container_name: oai-ext-dn
         image: oaisoftwarealliance/trf-gen-cn5g:latest
-        pull_policy: always
         environment:
             - UPF_FQDN=oai-upf
             - UE_NETWORK=10.1.1.0/24
@@ -184,7 +149,6 @@ services:
             retries: 5
         networks:
             public_net:
-                ipv4_address: 172.20.0.10
 
 networks:
     public_net:
@@ -195,3 +159,6 @@ networks:
                 - subnet: 172.20.0.0/16
         driver_opts:
             com.docker.network.bridge.name: "demo-oai"
+
+    macvlan_net:
+        external: true
