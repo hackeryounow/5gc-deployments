@@ -1,0 +1,212 @@
+# OAI CN5G "develop" deployment (rolling develop-branch images)
+# - All oaisoftwarealliance/* images use the :develop tag
+# - pull_policy: always on every service => each `docker compose up` re-pulls the
+#   newest image (develop is a moving tag), satisfying the "re-pull on restart"
+#   requirement. Equivalent CLI: `docker compose up -d --pull always`.
+# - MySQL subscriber DB: ../database/oai_db2.sql (schema+samples) then
+#   ./oai_db_provision.sql (makes UE 208950000000031 consistent)
+# - Network demo-oai-public-net (172.20.0.0/16, bridge demo-oai), static IPs
+# - Embedded UERANSIM gNB (172.20.0.141); run the UE with:
+#     docker exec -it ueransim ./nr-ue -c ./config/nr-ue.yaml
+#
+# Start : docker compose up -d
+# Stop  : docker compose down
+services:
+    mysql:
+        container_name: "mysql"
+        image: mysql:9.0
+        pull_policy: always
+        volumes:
+            - ../database/oai_db2.sql:/docker-entrypoint-initdb.d/oai_db.sql
+            - ./oai_db_provision.sql:/docker-entrypoint-initdb.d/zz_provision.sql
+            - ../healthscripts/mysql-healthcheck2.sh:/tmp/mysql-healthcheck.sh
+        environment:
+            - TZ=Europe/Paris
+            - MYSQL_DATABASE=oai_db
+            - MYSQL_USER=test
+            - MYSQL_PASSWORD=test
+            - MYSQL_ROOT_PASSWORD=linux
+        healthcheck:
+            test: /bin/bash -c "/tmp/mysql-healthcheck.sh"
+            interval: 10s
+            timeout: 5s
+            retries: 30
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.2
+    oai-nrf:
+        container_name: "oai-nrf"
+        image: oaisoftwarealliance/oai-nrf:develop
+        pull_policy: always
+        expose:
+            - 80/tcp
+            - 8080/tcp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-nrf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.3
+    oai-udr:
+        container_name: "oai-udr"
+        image: oaisoftwarealliance/oai-udr:develop
+        pull_policy: always
+        expose:
+            - 80/tcp
+            - 8080/tcp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-udr/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        # Wait until MySQL finished loading oai_db.sql + zz_provision.sql and is
+        # healthy; the UDR only retries the DB briefly at startup, so starting it
+        # too early leaves it permanently disconnected.
+        depends_on:
+            mysql:
+                condition: service_healthy
+            oai-nrf:
+                condition: service_started
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.8
+    oai-udm:
+        container_name: "oai-udm"
+        image: oaisoftwarealliance/oai-udm:develop
+        pull_policy: always
+        expose:
+            - 80/tcp
+            - 8080/tcp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-udm/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        depends_on:
+            - oai-nrf
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.7
+    oai-ausf:
+        container_name: "oai-ausf"
+        image: oaisoftwarealliance/oai-ausf:develop
+        pull_policy: always
+        expose:
+            - 80/tcp
+            - 8080/tcp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-ausf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        depends_on:
+            - oai-nrf
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.9
+    oai-amf:
+        container_name: "oai-amf"
+        image: oaisoftwarealliance/oai-amf:develop
+        pull_policy: always
+        expose:
+            - 80/tcp
+            - 8080/tcp
+            - 38412/sctp
+        ports:
+            - "38412:38412/sctp"
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-amf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+            - INT_ALGO_LIST=["NIA1" , "NIA2"]
+            - CIPH_ALGO_LIST=["NEA1" , "NEA2"]
+        depends_on:
+            - oai-nrf
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.4
+    oai-smf:
+        container_name: "oai-smf"
+        image: oaisoftwarealliance/oai-smf:develop
+        pull_policy: always
+        expose:
+            - 80/tcp
+            - 8080/tcp
+            - 8805/udp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-smf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        depends_on:
+            - oai-nrf
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.5
+    oai-upf:
+        container_name: "oai-upf"
+        image: oaisoftwarealliance/oai-upf:develop
+        pull_policy: always
+        expose:
+            - 2152/udp
+            - 8805/udp
+        ports:
+            - 2152:2152/udp
+        volumes:
+            - ./basic_nrf_config.yaml:/openair-upf/etc/config.yaml
+        environment:
+            - TZ=Europe/Paris
+        depends_on:
+            - oai-nrf
+        cap_add:
+            - NET_ADMIN
+            - SYS_ADMIN
+        cap_drop:
+            - ALL
+        privileged: true
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.6
+    oai-ext-dn:
+        privileged: true
+        init: true
+        container_name: oai-ext-dn
+        image: oaisoftwarealliance/trf-gen-cn5g:latest
+        pull_policy: always
+        environment:
+            - UPF_FQDN=oai-upf
+            - UE_NETWORK=10.1.1.0/24
+            - USE_FQDN=yes
+        healthcheck:
+            test: /bin/bash -c "ip r | grep 10.1.1"
+            interval: 10s
+            timeout: 5s
+            retries: 5
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.10
+    ueransim:
+        container_name: ueransim
+        image: free5gc/ueransim:latest
+        pull_policy: always
+        command: ./nr-gnb -c ./config/nr-gnb.yaml
+        volumes:
+            - ./ueransim/nr-gnb.yaml:/ueransim/config/nr-gnb.yaml
+            - ./ueransim/nr-ue.yaml:/ueransim/config/nr-ue.yaml
+        cap_add:
+            - NET_ADMIN
+        devices:
+            - "/dev/net/tun"
+        depends_on:
+            - oai-amf
+            - oai-upf
+        networks:
+            public_net:
+                ipv4_address: 172.20.0.141
+
+networks:
+    public_net:
+        driver: bridge
+        name: demo-oai-public-net
+        ipam:
+            config:
+                - subnet: 172.20.0.0/16
+        driver_opts:
+            com.docker.network.bridge.name: "demo-oai"
