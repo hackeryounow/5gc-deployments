@@ -1,0 +1,12 @@
+# Cloned OAI CN5G NF source (tag v2.2.1), used only for local source-level
+# inspection of the SBI/TLS behaviour. These are embedded git repositories in
+# detached HEAD at the upstream tag; they must NOT be committed here as gitlinks.
+# Mirrors the `src` rule in the project-root .gitignore.
+oai/2.2.1-tls/src/
+
+# Common temporary files that should not be uploaded
+*.log
+*.swp
+*.swo
+*~
+.DS_Store

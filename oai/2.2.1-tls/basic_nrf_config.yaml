@@ -42,16 +42,29 @@ register_nf:
 http_version: 2
 
 ############## TLS configuration for SBI interfaces
-# Upstream limitation (official images v2.2.0/v2.2.1/develop): only AMF and SMF
-# implement TLS. With enable_tls set, AMF/SMF serve HTTPS AND force https:// for
-# every SBI peer, while NRF/UDM/UDR/AUSF still serve plain HTTP/2 (h2c).
-# To bridge the gap, this deployment puts a TLS-terminating HAProxy
-# (service "oai-sbi-proxy") in front of NRF/AUSF/UDM; see docker-compose file.
-# AMF/SMF use dedicated config files (basic_nrf_config_amf/smf.yaml) pointing
-# the NRF host at the proxy; the other NFs keep talking plain HTTP to oai-nrf.
-# Each NF/proxy picks its own files by naming convention: oai_<nf>.crt / .key
+# Source-verified on the v2.2.1 tag (gitlab.eurecom.fr/oai/cn5g):
+#   - AMF  (src/sbi/amf_http2_server.cpp)  and SMF (src/api-server/smf-http2-server.cpp)
+#     DO implement a TLS server: boost::asio::ssl::context + oai_<nf>.key/.crt +
+#     server.listen_and_serve(ec, tls, addr, port) when enable_tls is set.
+#   - NRF / UDM / UDR / AUSF (api_server/*-http2-server.cpp) only ever call the
+#     plain nghttp2 overload listen_and_serve(ec, addr, port) with a bare
+#     `http2 server;` member => they serve plain HTTP/2 (h2c), NO TLS.
+#   - UPF has no SBI HTTP server at all (only N4/PFCP + N3/N9 GTPv1-U over UDP),
+#     so SBI TLS does not apply to it.
+#   - config::enable_tls() reads THIS top-level `tls:` block, and
+#     sbi_interface::get_url() uses the CALLER's own enable_tls to choose
+#     https:// vs http://.
+#
+# This base file is mounted by the plain NFs (NRF/UDM/UDR/AUSF/UPF) and keeps
+# enable_tls: false so they talk http:// to each other (the AUSF->UDM->UDR auth
+# chain would otherwise break against their plaintext servers).
+# prepare_configs.sh derives basic_nrf_config_amf/smf.yaml from this file by
+# flipping the top-level enable_tls back to true and pointing the NRF/AUSF/UDM
+# hosts at the TLS-terminating HAProxy (service "oai-sbi-proxy") aliases
+# oai-nrf-tls / oai-ausf-tls / oai-udm-tls. Each NF/proxy picks its own files by
+# naming convention: oai_<nf>.crt / .key
 tls:
-  enable_tls: true
+  enable_tls: false
   cert_certificate_path: "/etc/oai-certs"
   cert_key_path: "/etc/oai-certs"
   cert_pem_path: "/etc/oai-certs/ca.crt"
@@ -66,7 +79,7 @@ nfs:
       api_version: v1
       interface_name: eth0
       tls:
-        enable_tls: true
+        enable_tls: false
         cert_certificate_path: "/etc/oai-certs"
         cert_key_path: "/etc/oai-certs"
         cert_pem_path: "/etc/oai-certs/ca.crt"
@@ -80,24 +93,24 @@ nfs:
       api_version: v1
       interface_name: eth0
       tls:
-        enable_tls: true
+        enable_tls: false
         cert_certificate_path: "/etc/oai-certs"
         cert_key_path: "/etc/oai-certs"
         cert_pem_path: "/etc/oai-certs/ca.crt"
     n4:
       interface_name: eth0
       port: 8805
+  # NOTE: the upf sbi section below intentionally has NO per-NF tls sub-block.
+  # The UPF image healthcheck parses it with a fragile `grep -A 16 "upf:"` window
+  # to find the n3/n4/n6 interface_name; extra keys push n6 out of that window
+  # and the (purely cosmetic) healthcheck fails. Per-NF sbi.tls is inert anyway:
+  # the URL scheme comes from the caller's TOP-LEVEL tls.enable_tls.
   upf:
     host: oai-upf
     sbi:
       port: 8080
       api_version: v1
       interface_name: eth0
-      tls:
-        enable_tls: true
-        cert_certificate_path: "/etc/oai-certs"
-        cert_key_path: "/etc/oai-certs"
-        cert_pem_path: "/etc/oai-certs/ca.crt"
     n3:
       interface_name: eth0
       port: 2152
@@ -116,7 +129,7 @@ nfs:
       api_version: v1
       interface_name: eth0
       tls:
-        enable_tls: true
+        enable_tls: false
         cert_certificate_path: "/etc/oai-certs"
         cert_key_path: "/etc/oai-certs"
         cert_pem_path: "/etc/oai-certs/ca.crt"
@@ -127,7 +140,7 @@ nfs:
       api_version: v1
       interface_name: eth0
       tls:
-        enable_tls: true
+        enable_tls: false
         cert_certificate_path: "/etc/oai-certs"
         cert_key_path: "/etc/oai-certs"
         cert_pem_path: "/etc/oai-certs/ca.crt"
@@ -138,7 +151,7 @@ nfs:
       api_version: v1
       interface_name: eth0
       tls:
-        enable_tls: true
+        enable_tls: false
         cert_certificate_path: "/etc/oai-certs"
         cert_key_path: "/etc/oai-certs"
         cert_pem_path: "/etc/oai-certs/ca.crt"
@@ -149,7 +162,7 @@ nfs:
       api_version: v1
       interface_name: eth0
       tls:
-        enable_tls: true
+        enable_tls: false
         cert_certificate_path: "/etc/oai-certs"
         cert_key_path: "/etc/oai-certs"
         cert_pem_path: "/etc/oai-certs/ca.crt"
@@ -222,11 +235,19 @@ smf:
   support_features:
     use_local_subscription_info: yes # Use infos from local_subscription_info or from UDM
     use_local_pcc_rules: yes # Use infos from local_pcc_rules or from PCF
-  # we resolve from NRF, this is just to configure usage_reporting
+  # enable_upf_wo_nf_discovery: the v2.2.1 SMF cannot parse the v2.2.1 NRF's
+  # UPF discovery response ("Could not parse SearchResult from JSON"), so the
+  # NRF-discovery UPF path never triggers process_upf_profile()/the N4
+  # association and every PDU session fails with "UPF selection failed"
+  # (5GSM cause 0x21). Setting this makes smf_app associate directly with the
+  # statically configured UPF (smf_app.cpp: !register_nrf() or
+  # enable_upf_wo_nf_discovery()). The static UPF carries no sNssaiUpfInfoList,
+  # so serves_network() accepts any SNSSAI/DNN (smf_pfcp_association.cpp:98).
   upfs:
     - host: oai-upf
       config:
         enable_usage_reporting: no
+        enable_upf_wo_nf_discovery: yes
   ue_dns:
     primary_ipv4: "172.21.3.100"
     primary_ipv6: "2001:4860:4860::8888"

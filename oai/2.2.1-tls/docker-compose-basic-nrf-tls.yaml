@@ -1,7 +1,14 @@
-# OAI CN5G v2.2.1 basic deployment with TLS enabled on SBI interfaces
-# - AMF/SMF/UPF/UDR/AUSF serve HTTPS (TLS) using certificates from ./certs
-# - NRF/UDM/UPF/UDR/AUSF all support TLS in v2.2.1
-# - Generate the certificates first: ./generate_certs.sh
+# OAI CN5G v2.2.1 basic deployment with TLS on the SBI interfaces
+# - Source-verified on tag v2.2.1: ONLY AMF and SMF implement a TLS SBI server
+#   (ssl::context + listen_and_serve(ec, tls, ...)). NRF/UDM/UDR/AUSF serve plain
+#   h2c, and UPF has no SBI HTTP server (N4/PFCP + N3/N9 GTPv1-U over UDP).
+# - AMF/SMF run with enable_tls: true and serve HTTPS from ./certs
+#   (oai_amf/oai_smf.crt+.key). Because enable_tls also makes them build https://
+#   toward their statically configured NRF/UDM/AUSF peers (which are plaintext),
+#   the oai-sbi-proxy (HAProxy) terminates TLS for those and forwards h2c.
+# - NRF/UDM/UDR/AUSF/UPF use basic_nrf_config.yaml (enable_tls: false) so the
+#   AUSF->UDM->UDR authentication chain stays plain http:// and works.
+# - Generate the certificates first: ./generate_certs.sh && ./prepare_configs.sh
 services:
     mysql:
         container_name: "mysql"
@@ -24,7 +31,7 @@ services:
             public_net:
     oai-udr:
         container_name: "oai-udr"
-        image: oaisoftwarealliance/oai-udr:develop
+        image: oaisoftwarealliance/oai-udr:v2.2.1
         expose:
             - 80/tcp
             - 8080/tcp
@@ -40,7 +47,7 @@ services:
             public_net:
     oai-udm:
         container_name: "oai-udm"
-        image: oaisoftwarealliance/oai-udm:develop
+        image: oaisoftwarealliance/oai-udm:v2.2.1
         expose:
             - 80/tcp
             - 8080/tcp
@@ -55,7 +62,7 @@ services:
             public_net:
     oai-ausf:
         container_name: "oai-ausf"
-        image: oaisoftwarealliance/oai-ausf:develop
+        image: oaisoftwarealliance/oai-ausf:v2.2.1
         expose:
             - 80/tcp
             - 8080/tcp
@@ -70,7 +77,7 @@ services:
             public_net:
     oai-nrf:
         container_name: "oai-nrf"
-        image: oaisoftwarealliance/oai-nrf:develop
+        image: oaisoftwarealliance/oai-nrf:v2.2.1
         expose:
             - 80/tcp
             - 8080/tcp
@@ -83,7 +90,7 @@ services:
             public_net:
     oai-amf:
         container_name: "oai-amf"
-        image: oaisoftwarealliance/oai-amf:develop
+        image: oaisoftwarealliance/oai-amf:v2.2.1
         expose:
             - 80/tcp
             - 8080/tcp
@@ -103,7 +110,7 @@ services:
             public_net:
     oai-smf:
         container_name: "oai-smf"
-        image: oaisoftwarealliance/oai-smf:develop
+        image: oaisoftwarealliance/oai-smf:v2.2.1
         expose:
             - 80/tcp
             - 8080/tcp
@@ -119,7 +126,7 @@ services:
             public_net:
     oai-upf:
         container_name: "oai-upf"
-        image: oaisoftwarealliance/oai-upf:develop
+        image: oaisoftwarealliance/oai-upf:v2.2.1
         expose:
             - 2152/udp
             - 8805/udp
@@ -156,6 +163,46 @@ services:
             retries: 5
         networks:
             public_net:
+    oai-sbi-proxy:
+        # TLS-terminating reverse proxy for the NFs that have NO TLS server in
+        # v2.2.1 (NRF/UDM/AUSF -- confirmed from source: they call the plain
+        # nghttp2 listen_and_serve(ec, addr, port)). AMF/SMF run with
+        # enable_tls: true, so they build https:// URLs toward their statically
+        # configured NRF/UDM/AUSF peers. Those requests reach this proxy via the
+        # oai-*-tls SNI aliases below, TLS is terminated here with the per-NF
+        # certs, and traffic is forwarded as plain h2c to the real NF containers.
+        # SNI-based routing is defined in ./haproxy.cfg.
+        container_name: "oai-sbi-proxy"
+        image: haproxy:2.9-alpine
+        volumes:
+            - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+            - ./certs:/etc/oai-certs:ro
+        # HAProxy resolves every backend hostname at config-parse time, so all
+        # four NFs it forwards to (incl. oai-amf for be_amf) must already be
+        # started; that is why oai-amf is a startup dependency here and the
+        # AMF/SMF cannot in turn depend on this proxy (it would be a cycle).
+        # The one-shot SMF UPF-discovery race is instead avoided at the config
+        # level via enable_upf_wo_nf_discovery (static N4 association), and NRF
+        # registration is retried by the NFs until the proxy is reachable.
+        depends_on:
+            - oai-nrf
+            - oai-udm
+            - oai-ausf
+            - oai-amf
+        healthcheck:
+            # nc is provided by the Alpine base; the frontend binds *:8080.
+            test: ["CMD-SHELL", "nc -z 127.0.0.1 8080 || exit 1"]
+            interval: 5s
+            timeout: 3s
+            retries: 12
+            start_period: 5s
+        networks:
+            public_net:
+                aliases:
+                    - oai-nrf-tls
+                    - oai-udm-tls
+                    - oai-ausf-tls
+                    - oai-amf-tls
 
 networks:
     public_net:
@@ -166,6 +213,3 @@ networks:
                 - subnet: 172.20.0.0/16
         driver_opts:
             com.docker.network.bridge.name: "demo-oai"
-
-    macvlan_net:
-        external: true
