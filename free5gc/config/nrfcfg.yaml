@@ -23,6 +23,12 @@ configuration:
   serviceNameList: # the SBI services provided by this NRF, refer to TS 29.510
     - nnrf-nfm # Nnrf_NFManagement service
     - nnrf-disc # Nnrf_NFDiscovery service
+  # TS 29.510 heart-beat enforcement (only honored by nrf >= the build that
+  # introduced it; older NRFs ignore this key). Needed for the rolling
+  # :latest images: amf/nef builds predate heart-beat support, and without
+  # this the nrf suspends them and PDU session establishment fails.
+  heartbeat:
+    enforce: false
 
 logger: # log output setting
   enable: true # true or false
