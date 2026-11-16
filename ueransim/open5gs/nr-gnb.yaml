@@ -17,7 +17,7 @@ services:
       # gNB local IP for radio link / N2 / N3, must equal the container IP below
       - NR_GNB_IP=172.22.0.23
       # AMF N2 address, must match AMF_IP in the open5gs core deployment
-      - AMF_IP=172.22.0.6
+      - AMF_IP=172.22.0.10
       
     expose:
       - "38412/sctp"

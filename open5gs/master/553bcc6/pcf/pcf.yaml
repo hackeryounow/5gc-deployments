@@ -1,0 +1,37 @@
+db_uri: mongodb://MONGO_IP/open5gs
+
+logger:
+    file:
+      path: /open5gs/install/var/log/open5gs/pcf.log
+
+sbi:
+    server:
+      no_tls: true
+    client:
+      no_tls: true
+
+global:
+  max:
+    ue: MAX_NUM_UE
+
+pcf:
+    sbi:
+      server:
+        - address: PCF_IP
+          port: 7777
+      client:
+        nrf:
+          - uri: http://NRF_IP:7777
+        scp:
+          - uri: http://SCP_IP:7777
+    metrics:
+      server:
+        - address: PCF_IP
+          port: 9091
+    # Npcf_PolicyAuthorization QoS mappings used by the IMS P-CSCF.
+    # Keep the references aligned with pcscf/route/{register,mo,mt}.cfg.
+    qos_profiles:
+      - reference: "conversational-voice"
+        qos_index: 1
+      - reference: "conversational-video"
+        qos_index: 2
